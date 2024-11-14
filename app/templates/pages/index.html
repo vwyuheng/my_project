@@ -1,0 +1,167 @@
+<!-- app/templates/pages/index.html -->
+{% extends "base.html" %}
+
+{% block title %}人民币汇率监控{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f0f2f5;
+    }
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    .rate-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    .rate-card {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .rate-title {
+        font-size: 1.2em;
+        color: #333;
+        margin-bottom: 15px;
+    }
+    .rate-value {
+        font-size: 2em;
+        font-weight: bold;
+        color: #1a73e8;
+    }
+    .rate-details {
+        margin-top: 10px;
+        color: #666;
+    }
+    .timestamp {
+        color: #666;
+        font-size: 0.9em;
+        margin-top: 10px;
+    }
+    .refresh-button {
+        background: #1a73e8;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 1em;
+        margin-top: 20px;
+    }
+    .refresh-button:hover {
+        background: #1557b0;
+    }
+    .error-message {
+        color: #ea4335;
+        padding: 10px;
+        background: #fde7e7;
+        border-radius: 5px;
+        margin-top: 10px;
+    }
+    .spread {
+        font-size: 0.9em;
+        color: #666;
+        margin-top: 5px;
+    }
+    .positive {
+        color: #34a853;
+    }
+    .negative {
+        color: #ea4335;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>人民币汇率监控</h1>
+    <div class="rate-cards" id="rate-container">
+        <!-- 汇率卡片将通过 JavaScript 动态添加 -->
+    </div>
+    <button class="refresh-button" onclick="refreshRates()">刷新数据</button>
+    <div id="error-container"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const currencyNames = {
+        'CNY': '在岸人民币',
+        'CNH': '离岸人民币'
+    };
+
+    function createRateCard(currency, rate, date) {
+        if (!rate) return ''; // 如果没有汇率数据，不显示卡片
+
+        return `
+            <div class="rate-card">
+                <div class="rate-title">${currencyNames[currency] || currency}</div>
+                <div class="rate-value">${rate}</div>
+                <div class="rate-details">1USD/${currency}</div>
+                <div class="timestamp">${date}</div>
+            </div>
+        `;
+    }
+
+    function calculateSpread(cny, cnh) {
+        if (!cny || !cnh) return null;
+        const spread = ((cnh - cny) / cny * 10000).toFixed(2);
+        const className = spread > 0 ? 'positive' : 'negative';
+        return `<div class="spread">价差: <span class="${className}">${Math.abs(spread)} 基点</span></div>`;
+    }
+
+    async function fetchRates() {
+        try {
+            const response = await fetch('/api/exchange-rates');
+            const data = await response.json();
+
+            if (data.success) {
+                const container = document.getElementById('rate-container');
+                const rates = data.data.central.currencies;
+                const date = data.data.central.date;
+
+                let html = '';
+                html += createRateCard('CNY', rates.CNY, date);
+                html += createRateCard('CNH', rates.CNH, date);
+
+                if (rates.CNY && rates.CNH) {
+                    html += `
+                        <div class="rate-card">
+                            <div class="rate-title">CNH-CNY价差</div>
+                            ${calculateSpread(rates.CNY, rates.CNH)}
+                            <div class="timestamp">${date}</div>
+                        </div>
+                    `;
+                }
+
+                container.innerHTML = html;
+                document.getElementById('error-container').innerHTML = '';
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (error) {
+            document.getElementById('error-container').innerHTML =
+                `<div class="error-message">获取数据失败: ${error.message}</div>`;
+        }
+    }
+
+    async function refreshRates() {
+        document.getElementById('rate-container').innerHTML = '<div class="rate-card">获取中...</div>';
+        await fetchRates();
+    }
+
+    // 页面加载时获取数据
+    fetchRates();
+
+    // 每5分钟自动刷新一次
+    setInterval(fetchRates, 300000);
+</script>
+{% endblock %}
